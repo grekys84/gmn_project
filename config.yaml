@@ -1,0 +1,130 @@
+model:
+  name: GMN
+  version: 1.0.0
+  encoder: GINConv
+  readout: global_add_pool
+  in_channels: 5
+  hidden_dim: 64
+  num_layers: 3
+
+training:
+  epochs: 30
+  batch_size: 32
+  lr: 0.0005
+  weight_decay: 0.0001
+  scheduler: one_cycle        # options: none | one_cycle | step
+  early_stopping_patience: 5
+  validation_split: 0.1
+  seed: 42
+  shuffle: true
+  margin: 1.0                 # margin for the selected loss
+  loss: contrastive           # options: contrastive | triplet
+
+augmentation:
+  noise_scale: 0.1              # стандартное отклонение применяемого гауссовского шума в миллиметрах.
+  rotation_max_deg: 10.0        # максимальный угол поворота в градусах.
+  scale_jitter: 0.05            # относительное колебание масштаба.
+  flip_prob: 0.0                # вероятность переворачивания вдоль каждой оси.
+  edge_dropout: 0.1             # вероятность удаления ребер.
+  node_dropout: 0.05            # вероятность удаления узлов.
+
+augmentation_flags:
+  apply_noise: true
+  apply_rotation: true
+  apply_scale: true
+  apply_flip: true
+  apply_edge_dropout: true
+  apply_node_dropout: true
+
+augmentation_gap:
+  gap_range: [0.01, 0.05]                           # диапазон размера щелей в мм
+  min_gap_multiplier: 3                             # минимальная разница между щелью и длиной грани
+  random_position_range: [0.1, 0.9]                 # рандомное расположение щели на грани
+  contours_per_file: 1                              # количество контуров для модификации
+
+augmentation_hole_unclosed:
+  gap_range: [0.01, 0.05]                 # мм (мин/макс ширина разрыва)
+  min_gap_multiplier: 2                   # множитель для минимальной длины ребра
+  contours_per_file: 1                    # сколько контуров разрывать в файле
+  max_hole_edge_length: 2                 # мм (макс длина ребра отверстия)
+  random_position_range: [0.3, 0.7]       # относительная позиция разрыва (30-70%)
+
+augmentation_ladder:
+  step_length: 5        # длина шага лесенки (мм)
+  offset: 2.0           # смещение для H/V (мм)
+  diag_offset: 0        # смещение для диагоналей (мм)
+  sides: 0              # число преобразуемых сторон (мм)
+
+augmentation_tabs:
+  width_range: [1.0, 2.0]         # диапазон ширины перемычек (мм)
+  length_range: [2.0, 6.0]        # диапазон длин перемычек (мм)
+  tabs_per_contour: 20            # количество перемычек на контур
+  min_edge_length: 3.0            # минимальная длина ребра (мм)
+
+augmentation_shear:
+  shearing_width_range: [0.01, 0.05]        # ширина линии
+  shearing_length_range: [1, 5]             # длина линии
+  shearing_per_file: 10                      # количество линий
+  min_edge_length: 10                       # минимальная длина линии (мм)
+
+augmentation_punch:
+  artifact_types: ['rectangle', 'circle', 'oblong']       # виды артефактов
+  artifacts_per_file: 3                                   # количество артефактов
+  rectangle_size: [50, 5]                               # размеры прямоугольного отверстия
+  circle_diameter: 5                                     # диаметр отверстия
+  oblong_size: [20, 8]                                    # размеры облонга (овальное/удлиненное отверстие)
+
+
+data:
+  pair_file: /app/gmn_project/data/master/graph_pairs/graph_pairs.json        # основной датасет графов
+  new_pair_file: /app/gmn_project/data/master/graph_pairs/new_pairs.json      # новые пары для дообучения
+  master_graph: /app/gmn_project/data/master/graph                            # каталог с эталонными графами
+  new_graph: /app/gmn_project/data/output/graph                               # каталог для новых графов
+  master_svg: /app/gmn_project/data/master/dataset/base_svg                   # каталог с эталонными svg
+  new_svg: /app/gmn_project/data/output/svg                                   # каталог с новыми svg
+  overlays: /app/gmn_project/data/output/svg/overlays                         # каталог с оверлеями
+  augmentation_gap: /app/gmn_project/data/master/dataset/gap                  # аугментация - "щели"
+  augmentation_hole_unclosed: /app/gmn_project/data/master/dataset/hole_unclosed    # аугментация - "щели в окружностях"
+  augmentation_ladder: /app/gmn_project/data/master/dataset/ladder            # аугментация - "лесенка"
+  augmentation_tabs: /app/gmn_project/data/master/dataset/tabs                # аугментация "перемычки"
+  augmentation_shear: /app/gmn_project/data/master/dataset/shear              # аугментация "линии"
+  augmentation_punch: /app/gmn_project/data/master/dataset/punching           # аугментация "пуансоны"
+
+visualization:
+  prepare_pairs: /app/gmn_project/data/visualization/prepare_pairs         # визуализация пар графов
+  prepare_graphs: /app/gmn_project/data/visualization/prepare_graphs       # визуализация графов
+
+models:
+  current_model: /app/gmn_project/data/models                              # основная модель
+  new_model: /app/gmn_project/data/models                                  # новая модель
+  val_errors: /app/gmn_project/data/models/val_errors                      # качество распознавания конкретных пар графов
+
+service:
+  embedding_db_path: /app/gmn_project/data/master/embeddings       # датасет эмбеддингов
+  top_k: 3                                                         # количество близких по схожести объектов
+  similarity_threshold: 0.99                                       # порог для GNN и fast-геометрии
+
+normalizer:
+  scale: 0.00035
+  precision: 0.01
+
+geometry:
+  slow_threshold: 50.0            # порог в % для geometry_compare_slow
+  tol: 0.0001                     # порог при котором графы считать совпадающими
+  angle_tol: 0.001                # допуск для сравнения углов (в радианах)
+  use_angles: true                # учитывать ли углы между рёбрами при сравнении
+  normalize_position: true        # центрировать графы (вычесть среднее)
+  normalize_scale: true           # Нормализовать масштаб графов (по максимальному расстоянию)
+
+evaluation:
+  threshold: 0.5
+  min_target_accuracy: 0.90
+  test_mode: false
+
+logging:
+  log_dir: /app/gmn_project/data/logs/
+#  log_to_file: true
+#  log_level: INFO
+
+#ci_cd:
+#  auto_register: false
