@@ -1,8 +1,9 @@
-import xml.etree.ElementTree as ET
-import re
 import math
-import networkx as nx
+import re
+import xml.etree.ElementTree as ET
 from pathlib import Path
+
+import networkx as nx
 
 
 def _parse_path_d(d: str) -> list[tuple[float, float]]:
