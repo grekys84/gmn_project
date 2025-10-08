@@ -235,6 +235,35 @@ class GraphMatchingService:
         best_cand_nx: Optional[nx.Graph] = None
         valid = False
 
+        def _load_candidate_graph(candidate_id: str) -> Optional[nx.Graph]:
+            """Загружает граф кандидата из базы."""
+
+            cand_path = self.graph_db_dir / f"{candidate_id}.pt"
+            if not cand_path.exists():
+                logger.warning(f"Файл кандидата не найден: {cand_path}")
+                return None
+
+            try:
+                cand_data = torch.load(cand_path, weights_only=False)
+            except Exception as e:  # pragma: no cover - логирование ошибок
+                logger.warning(
+                    f"Ошибка загрузки кандидата {candidate_id}: {e}"
+                )
+                return None
+
+            try:
+                return self._data_to_networkx(cand_data)
+            except Exception as e:  # pragma: no cover - логирование ошибок
+                logger.warning(
+                    f"Ошибка преобразования кандидата {candidate_id}: {e}"
+                )
+                return None
+
+        below_threshold: list[tuple[dict, str]] = []
+        threshold_percent = (
+            self.threshold * 100 if self.threshold <= 1 else self.threshold
+        )
+
         for item in matches:
             cand_id = item["id"]
             sim_percent = item["similarity_percent"] / 100.0  # в [0,1]
@@ -245,6 +274,11 @@ class GraphMatchingService:
                     f"Пропуск {cand_id}: сходство {sim_percent:.3f} < "
                     f"порога {self.threshold}"
                 )
+                cand_meta = next(
+                    (m for m in self.db_meta if m["id"] == cand_id), {}
+                )
+                cand_source = cand_meta.get("source", "unknown_source")
+                below_threshold.append((item, cand_source))
                 continue
             # Найти source для cand_id из метаданных
             cand_meta = next(
@@ -259,16 +293,8 @@ class GraphMatchingService:
             )
 
             # 3.2. Загрузка эталонного графа
-            cand_path = self.graph_db_dir / f"{cand_id}.pt"
-            if not cand_path.exists():
-                logger.warning(f"Файл кандидата не найден: {cand_path}")
-                continue
-
-            try:
-                cand_data = torch.load(cand_path, weights_only=False)
-                cand_nx = self._data_to_networkx(cand_data)
-            except Exception as e:
-                logger.warning(f"Ошибка загрузки кандидата {cand_id}: {e}")
+            cand_nx = _load_candidate_graph(cand_id)
+            if cand_nx is None:
                 continue
 
             # 3.3. Геометрическое сравнение
@@ -309,6 +335,58 @@ class GraphMatchingService:
             f"Геометрическая проверка завершена за "
             f"{time.perf_counter() - start_geo:.2f} с"
         )
+
+        if not valid and below_threshold:
+            fallback_item, fallback_source = max(
+                below_threshold,
+                key=lambda x: x[0].get("similarity_percent", 0.0),
+            )
+            fallback_id = fallback_item["id"]
+            fallback_similarity = fallback_item.get("similarity_percent", 0.0)
+            logger.info(
+                "Все кандидаты отфильтрованы по порогу GNN (%s%% < %s%%). "
+                "Запускаем геометрическую проверку лучшего кандидата %s (%s) без учёта порога.",
+                f"{fallback_similarity:.2f}",
+                f"{threshold_percent:.2f}",
+                fallback_id,
+                fallback_source,
+            )
+
+            cand_nx = _load_candidate_graph(fallback_id)
+            if cand_nx is not None:
+                try:
+                    robust_score = geometry_compare_slow(
+                        pred_nx,
+                        cand_nx,
+                        tol=settings.geometry.tol,
+                        angle_tol=settings.geometry.angle_tol,
+                        use_angles=settings.geometry.use_angles,
+                        normalize_position=settings.geometry.normalize_position,
+                        normalize_scale=settings.geometry.normalize_scale,
+                    )
+                    logger.info(
+                        "Точное сравнение (slow) для fallback-кандидата %s: %.2f%%",
+                        fallback_id,
+                        robust_score,
+                    )
+                    if robust_score >= self.slow_geometry_threshold:
+                        logger.info(
+                            "Совпадение подтверждено по fallback-кандидату: %s (%s), точность: %.2f%%",
+                            fallback_id,
+                            fallback_source,
+                            robust_score,
+                        )
+                        best_id = fallback_id
+                        best_percent = robust_score
+                        best_cand_nx = cand_nx
+                        valid = True
+                except Exception as e:  # pragma: no cover - логирование ошибок
+                    logger.warning(
+                        "Ошибка в geometry_compare_slow для fallback-кандидата %s (%s): %s",
+                        fallback_id,
+                        fallback_source,
+                        e,
+                    )
 
         # 4. Оверлей
         logger.info("Создание оверлея...")
