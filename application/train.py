@@ -3,15 +3,15 @@ import logging
 
 import numpy as np
 import torch
-from torch_geometric.data import Batch
-from torch.utils.data import DataLoader
 from sklearn.metrics import roc_auc_score
+from torch.utils.data import DataLoader
+from torch_geometric.data import Batch
 from tqdm import tqdm
 
 from application.datasets.graph_pair_dataset import GraphPairDataset
-from domain.models.siamese_gnn import SiameseGNN
-from domain.models.losses import CosineContrastiveLoss, TripletLoss
 from domain.config.settings import settings
+from domain.models.losses import CosineContrastiveLoss, TripletLoss
+from domain.models.siamese_gnn import SiameseGNN
 
 
 # --- Основные параметры ---
@@ -231,7 +231,6 @@ def main():
             torch.tensor(all_similarities),
             torch.tensor(all_labels),
             torch.tensor(all_idxs),
-            VAL_ERRORS_DIR,
             epoch,
             top_n=10,
         )

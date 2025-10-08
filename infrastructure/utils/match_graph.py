@@ -204,7 +204,15 @@ def geometry_verified_id(
         if cand is None:
             continue
         cand_nx = pyg_to_networkx(cand)
-        raw = geometry_compare_slow(cand_nx, pred_nx)
+        raw = geometry_compare_slow(
+            pred_nx,
+            cand_nx,
+            tol=settings.geometry.tol,
+            angle_tol=settings.geometry.angle_tol,
+            use_angles=settings.geometry.use_angles,
+            normalize_position=settings.geometry.normalize_position,
+            normalize_scale=settings.geometry.normalize_scale,
+        )
         try:
             percent = float(raw)
         except (TypeError, ValueError):
@@ -354,7 +362,7 @@ def match_graph_from_bytes(
 ):
     load_resources()
     buffer = BytesIO(data_bytes)
-    graph = torch.load(buffer, weights_only=False, map_location="gpu")
+    graph = torch.load(buffer, weights_only=False, map_location=device)
     return _postprocess_match_result(graph, top_k=top_k, threshold=threshold)
 
 
