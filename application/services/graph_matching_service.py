@@ -344,12 +344,13 @@ class GraphMatchingService:
             fallback_id = fallback_item["id"]
             fallback_similarity = fallback_item.get("similarity_percent", 0.0)
             logger.info(
-                "Все кандидаты отфильтрованы по порогу GNN (%s%% < %s%%). "
-                "Запускаем геометрическую проверку лучшего кандидата %s (%s) без учёта порога.",
-                f"{fallback_similarity:.2f}",
-                f"{threshold_percent:.2f}",
+                "Ни один кандидат не подтверждён геометрической проверкой. "
+                "Запускаем проверку лучшего кандидата ниже порога GNN %s (%s): "
+                "%s%% < %s%%.",
                 fallback_id,
                 fallback_source,
+                f"{fallback_similarity:.2f}",
+                f"{threshold_percent:.2f}",
             )
 
             cand_nx = _load_candidate_graph(fallback_id)
