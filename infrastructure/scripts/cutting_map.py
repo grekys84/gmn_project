@@ -274,7 +274,7 @@
 import xml.etree.ElementTree as ET
 from pathlib import Path
 import re
-from shapely.geometry import Polygon, box, MultiPolygon
+from shapely.geometry import Polygon, box
 from shapely.ops import unary_union
 import matplotlib.pyplot as plt
 

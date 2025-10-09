@@ -42,14 +42,13 @@ class GraphPairDataset(Dataset):
     def __init__(
         self,
         json_file=None,
-        augmentation_config=None,
         return_index=False,
     ):
         """Инициализирует датасет, загружает пары графов из JSON."""
         super().__init__()
         self.return_index = return_index
 
-        # Используем переданный конфиг или дефолтный
+        # Используем настройки из конфигурации
         self.cfg_flags = settings.augmentation_flags
         self.cfg_params = settings.augmentation
 
