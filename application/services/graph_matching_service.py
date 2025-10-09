@@ -220,7 +220,10 @@ class GraphMatchingService:
         logger.info("Поиск по базе эмбеддингов...")
         start_step = time.perf_counter()
         matches = match_graph(
-            data, master_db=(self.db_embeddings, self.db_meta)
+            data,
+            master_db=(self.db_embeddings, self.db_meta),
+            top_k=self.top_k,
+            threshold=None,
         )
         logger.info(
             f"Найдено {len(matches)} кандидатов (за "
@@ -259,7 +262,7 @@ class GraphMatchingService:
                 )
                 return None
 
-        below_threshold: list[tuple[dict, str]] = []
+        rejected_candidates: list[tuple[dict, str, str]] = []
         threshold_percent = (
             self.threshold * 100 if self.threshold <= 1 else self.threshold
         )
@@ -270,15 +273,21 @@ class GraphMatchingService:
 
             # 3.1. Проверка порога по GNN
             if sim_percent < self.threshold:
-                logger.debug(
-                    f"Пропуск {cand_id}: сходство {sim_percent:.3f} < "
-                    f"порога {self.threshold}"
-                )
                 cand_meta = next(
                     (m for m in self.db_meta if m["id"] == cand_id), {}
                 )
                 cand_source = cand_meta.get("source", "unknown_source")
-                below_threshold.append((item, cand_source))
+                logger.info(
+                    "Пропуск кандидата по порогу GNN: %s (%s), "
+                    "сходство: %.2f%% < %.2f%%",
+                    cand_id,
+                    cand_source,
+                    item.get("similarity_percent", 0.0),
+                    threshold_percent,
+                )
+                rejected_candidates.append(
+                    (item, cand_source, "gnn_threshold")
+                )
                 continue
             # Найти source для cand_id из метаданных
             cand_meta = next(
@@ -326,32 +335,47 @@ class GraphMatchingService:
                         f"Не прошёл точное сравнение: {robust_score:.2f}% < "
                         f"{self.slow_geometry_threshold}%"
                     )
+                    rejected_candidates.append(
+                        (item, cand_source, "geometry_mismatch")
+                    )
             except Exception as e:
                 logger.warning(
                     f"Ошибка в geometry_compare_slow "
                     f"для {cand_id} ({cand_source}): {e}"
+                )
+                rejected_candidates.append(
+                    (item, cand_source, "geometry_exception")
                 )
         logger.info(
             f"Геометрическая проверка завершена за "
             f"{time.perf_counter() - start_geo:.2f} с"
         )
 
-        if not valid and below_threshold:
-            fallback_item, fallback_source = max(
-                below_threshold,
-                key=lambda x: x[0].get("similarity_percent", 0.0),
+        if not valid and rejected_candidates:
+            fallback_item, fallback_source, fallback_reason = max(
+                rejected_candidates,
+                key=lambda x: float(x[0].get("similarity_percent", 0.0)),
             )
             fallback_id = fallback_item["id"]
             fallback_similarity = fallback_item.get("similarity_percent", 0.0)
-            logger.info(
-                "Ни один кандидат не подтверждён геометрической проверкой. "
-                "Запускаем проверку лучшего кандидата ниже порога GNN %s (%s): "
-                "%s%% < %s%%.",
-                fallback_id,
-                fallback_source,
-                f"{fallback_similarity:.2f}",
-                f"{threshold_percent:.2f}",
-            )
+            if fallback_reason == "gnn_threshold":
+                logger.info(
+                    "Ни один кандидат не подтверждён геометрической проверкой. "
+                    "Запускаем проверку лучшего кандидата %s (%s): "
+                    "%s%% < %s%%.",
+                    fallback_id,
+                    fallback_source,
+                    f"{fallback_similarity:.2f}",
+                    f"{threshold_percent:.2f}",
+                )
+            else:
+                logger.info(
+                    "Ни один кандидат не подтверждён геометрической проверкой. "
+                    "Повторная проверка лучшего кандидата %s (%s) со сходством %s%%.",
+                    fallback_id,
+                    fallback_source,
+                    f"{fallback_similarity:.2f}",
+                )
 
             cand_nx = _load_candidate_graph(fallback_id)
             if cand_nx is not None:
