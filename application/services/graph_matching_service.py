@@ -75,6 +75,15 @@ class GraphMatchingService:
             else settings.service.similarity_threshold
         )
         self.slow_geometry_threshold = settings.geometry.slow_threshold
+        self.max_node_mismatch_percent = (
+            settings.geometry.max_node_mismatch_percent
+        )
+        self.max_edge_mismatch_percent = (
+            settings.geometry.max_edge_mismatch_percent
+        )
+        self.max_bbox_mismatch_percent = (
+            settings.geometry.max_bbox_mismatch_percent
+        )
 
         # --- Загрузка модели ---
         if not self.model_path.exists():
@@ -150,6 +159,84 @@ class GraphMatchingService:
         edges = data.edge_index.t().tolist()
         g.add_edges_from(edges)
         return g
+
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _graph_measurements(graph: nx.Graph) -> dict:
+        """Возвращает основные метрические характеристики графа."""
+
+        nodes = graph.number_of_nodes()
+        edges = graph.number_of_edges()
+        xs = [float(graph.nodes[n].get("x", 0.0)) for n in graph.nodes]
+        ys = [float(graph.nodes[n].get("y", 0.0)) for n in graph.nodes]
+
+        if xs and ys:
+            min_x, max_x = min(xs), max(xs)
+            min_y, max_y = min(ys), max(ys)
+            width = max_x - min_x
+            height = max_y - min_y
+        else:
+            width = height = 0.0
+
+        area = width * height
+
+        return {
+            "nodes": nodes,
+            "edges": edges,
+            "width": width,
+            "height": height,
+            "area": area,
+        }
+
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _percentage_diff(a: float, b: float) -> float:
+        """Возвращает относительную разницу между ``a`` и ``b`` в процентах."""
+
+        baseline = max(abs(a), abs(b), 1e-9)
+        return abs(a - b) / baseline * 100.0
+
+    # ------------------------------------------------------------------
+    def _validate_geometry_size(
+        self, pred_stats: dict, cand_stats: dict
+    ) -> Optional[str]:
+        """Проверяет базовые геометрические параметры до точного сравнения."""
+
+        node_diff = self._percentage_diff(
+            pred_stats["nodes"], cand_stats["nodes"]
+        )
+        if node_diff > self.max_node_mismatch_percent:
+            return (
+                "разница в количестве узлов %.2f%% (допуск %.2f%%)"
+                % (node_diff, self.max_node_mismatch_percent)
+            )
+
+        edge_diff = self._percentage_diff(
+            pred_stats["edges"], cand_stats["edges"]
+        )
+        if edge_diff > self.max_edge_mismatch_percent:
+            return (
+                "разница в количестве рёбер %.2f%% (допуск %.2f%%)"
+                % (edge_diff, self.max_edge_mismatch_percent)
+            )
+
+        width_diff = self._percentage_diff(
+            pred_stats["width"], cand_stats["width"]
+        )
+        height_diff = self._percentage_diff(
+            pred_stats["height"], cand_stats["height"]
+        )
+        area_diff = self._percentage_diff(
+            pred_stats["area"], cand_stats["area"]
+        )
+        bbox_diff = max(width_diff, height_diff, area_diff)
+        if bbox_diff > self.max_bbox_mismatch_percent:
+            return (
+                "отличие габаритов/площади %.2f%% (допуск %.2f%%)"
+                % (bbox_diff, self.max_bbox_mismatch_percent)
+            )
+
+        return None
 
     # ------------------------------------------------------------------
     def predict_path(
@@ -267,6 +354,8 @@ class GraphMatchingService:
             self.threshold * 100 if self.threshold <= 1 else self.threshold
         )
 
+        pred_stats = self._graph_measurements(pred_nx)
+
         for item in matches:
             cand_id = item["id"]
             sim_percent = item["similarity_percent"] / 100.0  # в [0,1]
@@ -304,6 +393,18 @@ class GraphMatchingService:
             # 3.2. Загрузка эталонного графа
             cand_nx = _load_candidate_graph(cand_id)
             if cand_nx is None:
+                continue
+
+            cand_stats = self._graph_measurements(cand_nx)
+            size_reason = self._validate_geometry_size(pred_stats, cand_stats)
+            if size_reason is not None:
+                logger.info(
+                    "Отказ кандидата %s (%s) из-за несоответствия размеров: %s",
+                    cand_id,
+                    cand_source,
+                    size_reason,
+                )
+                rejected_candidates.append((item, cand_source, "geometry_size"))
                 continue
 
             # 3.3. Геометрическое сравнение
@@ -378,6 +479,18 @@ class GraphMatchingService:
                 )
 
             cand_nx = _load_candidate_graph(fallback_id)
+            if cand_nx is not None:
+                cand_stats = self._graph_measurements(cand_nx)
+                size_reason = self._validate_geometry_size(pred_stats, cand_stats)
+                if size_reason is not None:
+                    logger.info(
+                        "Fallback-кандидат %s (%s) отклонён по размерам: %s",
+                        fallback_id,
+                        fallback_source,
+                        size_reason,
+                    )
+                    cand_nx = None
+
             if cand_nx is not None:
                 try:
                     robust_score = geometry_compare_slow(

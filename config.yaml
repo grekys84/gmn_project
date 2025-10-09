@@ -115,6 +115,9 @@ geometry:
   use_angles: true                # учитывать ли углы между рёбрами при сравнении
   normalize_position: true        # центрировать графы (вычесть среднее)
   normalize_scale: true           # Нормализовать масштаб графов (по максимальному расстоянию)
+  max_node_mismatch_percent: 5.0  # допустимая разница в числе узлов
+  max_edge_mismatch_percent: 5.0  # допустимая разница в числе рёбер
+  max_bbox_mismatch_percent: 5.0  # допустимая разница габаритов/площади
 
 evaluation:
   threshold: 0.5

@@ -261,6 +261,9 @@ class GeometryConfig(BaseModel):
     use_angles: bool = True
     normalize_position: bool = True
     normalize_scale: bool = True
+    max_node_mismatch_percent: float = 5.0
+    max_edge_mismatch_percent: float = 5.0
+    max_bbox_mismatch_percent: float = 5.0
 
 
 class EvaluationConfig(BaseModel):
