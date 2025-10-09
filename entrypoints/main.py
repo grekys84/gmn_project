@@ -1,9 +1,8 @@
 import logging
-from  datetime import datetime
+from datetime import datetime
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from dotenv import load_dotenv
-import os
 from fastapi import FastAPI, UploadFile, File, Depends, HTTPException
 # import ngrok
 import uvicorn

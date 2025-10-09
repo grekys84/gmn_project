@@ -115,7 +115,6 @@ def main():
     # --- Датасет ---
     dataset = GraphPairDataset(
         json_file=PAIRS_JSON,
-        augmentation_config=settings.augmentation,
         return_index=True,
     )
 

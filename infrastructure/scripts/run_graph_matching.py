@@ -1,8 +1,5 @@
 #!/usr/bin/env python
 """CLI-интерфейс для GraphMatchingService."""
-
-from __future__ import annotations
-
 import argparse
 import sys
 from pathlib import Path

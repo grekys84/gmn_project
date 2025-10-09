@@ -5,7 +5,6 @@ import xml.etree.ElementTree as ET
 import networkx as nx
 
 import torch
-from torch_geometric.data import Data
 
 from infrastructure.scripts.graph_utils import pyg_to_networkx
 

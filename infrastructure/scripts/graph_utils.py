@@ -1,7 +1,5 @@
 """Утилиты конвертации графов между PyG и NetworkX."""
 
-from __future__ import annotations
-
 import math
 from typing import Iterable
 
