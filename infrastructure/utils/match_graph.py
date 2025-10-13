@@ -212,6 +212,8 @@ def geometry_verified_id(
             use_angles=settings.geometry.use_angles,
             normalize_position=settings.geometry.normalize_position,
             normalize_scale=settings.geometry.normalize_scale,
+            feature_weights=settings.geometry.feature_weights,
+            feature_coverage_importance=settings.geometry.feature_coverage_importance,
         )
         try:
             percent = float(raw)

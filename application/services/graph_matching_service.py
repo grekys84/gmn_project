@@ -257,7 +257,8 @@ class GraphMatchingService:
         cand_source = cand_meta.get("source", "unknown_source")
         sim_percent = item["similarity_percent"]
 
-        logger.info(f"Проверка кандидата: {cand_id} ({cand_source}) — GNN сходство {sim_percent:.2f}%")
+        logger.info(f" ▶️ Проверка кандидата: {cand_id} ({cand_source}) ")
+        logger.info(f"GNN сходство {sim_percent:.2f}%")
 
         if sim_percent < self.threshold:
             logger.info(f"Пропуск {cand_id} ({cand_source}) — ниже порога GNN ({self.threshold:.1f}%)")
@@ -285,7 +286,7 @@ class GraphMatchingService:
 
         size_reason = self._validate_geometry_size(pred_stats, cand_stats)
         if size_reason:
-            logger.info(f"Отказ {cand_id} ({cand_source}) — несоответствие размеров: {size_reason}")
+            logger.info(f" 🔴 Отказ {cand_id} ({cand_source}) — несоответствие размеров: {size_reason}")
             return MatchResult(id=cand_id, source=cand_source, reason="geometry_size")
 
         try:
@@ -296,6 +297,10 @@ class GraphMatchingService:
                 use_angles=settings.geometry.use_angles,
                 normalize_position=settings.geometry.normalize_position,
                 normalize_scale=settings.geometry.normalize_scale,
+                feature_weights=settings.geometry.feature_weights,
+                feature_coverage_importance=(
+                    settings.geometry.feature_coverage_importance
+                ),
             )
             if isinstance(result, dict):
                 score = result.get("score", 0.0)
@@ -312,7 +317,7 @@ class GraphMatchingService:
             return MatchResult(id=cand_id, source=cand_source, percent=score, reason="geometry_mismatch")
 
         except Exception as e:
-            logger.warning(f"Ошибка сравнения {cand_id}: {e}")
+            logger.warning(f"❌ Ошибка сравнения {cand_id}: {e}")
             return MatchResult(id=cand_id, source=cand_source, reason="geometry_exception")
 
     def _write_report(
@@ -339,7 +344,7 @@ class GraphMatchingService:
             else:
                 cand_stats = {"nodes": 0, "edges": 0, "width": 0.0, "height": 0.0, "area": 0.0}
 
-                # --- запись в CSV ---
+            # --- запись в CSV ---
             with self.report_path.open("a", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)
                 writer.writerow([
@@ -388,8 +393,8 @@ class GraphMatchingService:
         abs_width_diff = abs(pred_stats["width"] - cand_stats["width"])
         abs_height_diff = abs(pred_stats["height"] - cand_stats["height"])
         abs_area_diff = abs(pred_stats["area"] - cand_stats["area"])
-        max_abs_width = getattr(settings.geometry, "max_absolute_bbox_diff_mm", 5.0)
-        max_abs_area = getattr(settings.geometry, "max_absolute_area_diff_mm2", 500.0)
+        max_abs_width = settings.geometry.max_absolute_bbox_diff_mm
+        max_abs_area = settings.geometry.max_absolute_area_diff_mm2
 
         if abs_width_diff > max_abs_width or abs_height_diff > max_abs_width:
             return f"абсолютная разница габаритов {abs_width_diff:.2f}×{abs_height_diff:.2f} мм (допуск ±{max_abs_width:.1f} мм)"

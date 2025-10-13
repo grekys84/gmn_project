@@ -2,6 +2,7 @@ from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import (
     BaseModel,
+    Field,
     model_validator,
 )
 from typing import List
@@ -264,6 +265,16 @@ class GeometryConfig(BaseModel):
     max_node_mismatch_percent: float = 5.0
     max_edge_mismatch_percent: float = 5.0
     max_bbox_mismatch_percent: float = 5.0
+    max_absolute_bbox_diff_mm: float = 5.0
+    max_absolute_area_diff_mm2: float = 500.0
+    feature_weights: dict[str, float] = Field(
+        default_factory=lambda: {
+            "nodes": 1.0,
+            "edges": 1.0,
+            "angles": 1.0,
+        }
+    )
+    feature_coverage_importance: dict[str, float] | float = 1.0
 
 
 class EvaluationConfig(BaseModel):
