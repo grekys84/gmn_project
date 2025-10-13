@@ -118,6 +118,14 @@ geometry:
   max_node_mismatch_percent: 5.0  # допустимая разница в числе узлов
   max_edge_mismatch_percent: 5.0  # допустимая разница в числе рёбер
   max_bbox_mismatch_percent: 5.0  # допустимая разница габаритов/площади
+  feature_weights:                # веса для компонентов сравнения
+    nodes: 1.0
+    edges: 1.0
+    angles: 1.0
+  feature_coverage_importance:    # вклад покрытия узлов/рёбер/углов
+    coords: 0.3
+    edges: 0.3
+    angles: 0.5
 
 evaluation:
   threshold: 0.5

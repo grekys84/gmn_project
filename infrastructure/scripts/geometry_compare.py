@@ -4,6 +4,7 @@ import networkx as nx
 import numpy as np
 from scipy.spatial.distance import cdist
 from itertools import combinations
+from typing import Mapping, Optional, Union
 
 
 def extract_and_normalize_coordinates(G, normalize_position, normalize_scale):  # noqa N803
@@ -219,6 +220,8 @@ def calculate_similarity_percentage(
     total_edges,
     matched_angles,
     total_angles,
+    feature_weights: Optional[Mapping[str, float]] = None,
+    feature_coverage_importance: Union[float, Mapping[str, float], None] = 1.0,
 ):
     """
     Вычисляет процент схожести графов.
@@ -231,16 +234,97 @@ def calculate_similarity_percentage(
         matched_angles: Совпавшие углы
         total_angles: Общее количество углов
 
+    feature_weights: Веса для компонентов сравнения (узлы, рёбра, углы)
+    feature_coverage_importance: Степень влияния покрытия признаков.
+        Может быть положительным числом (экспонента для итогового покрытия)
+        или словарём с весами для отдельных компонентов покрытия
+        ("coords"/"nodes", "edges", "angles").
+
     Returns:
         float: Процент схожести (0-100)
 
     """
-    total = total_coords + total_edges + total_angles
-    if total == 0:
+    weights = {
+        "nodes": 1.0,
+        "edges": 1.0,
+        "angles": 1.0,
+    }
+    if feature_weights:
+        for key, value in feature_weights.items():
+            if key in weights:
+                weights[key] = float(value)
+
+    weighted_totals = 0.0
+    weighted_matches = 0.0
+
+    components = (
+        ("nodes", matched_coords, total_coords),
+        ("edges", matched_edges, total_edges),
+        ("angles", matched_angles, total_angles),
+    )
+    for name, matched, total in components:
+        weight = max(weights.get(name, 1.0), 0.0)
+        if weight == 0.0 or total <= 0:
+            continue
+        weighted_totals += weight * float(total)
+        weighted_matches += weight * float(matched)
+
+    if weighted_totals <= 0:
         return 0.0
 
-    match = matched_coords + matched_edges + matched_angles
-    similarity = (match / total) * 100.0
+    # Сохраняем индивидуальные покрытия для компонентов, если потребуется
+    coverage_components: dict[str, Optional[float]] = {}
+    for name, matched, total in components:
+        if total > 0:
+            coverage_components[name] = max(0.0, min(1.0, float(matched) / float(total)))
+        else:
+            coverage_components[name] = None
+
+    coverage_ratio = max(0.0, min(1.0, weighted_matches / weighted_totals))
+
+    if isinstance(feature_coverage_importance, Mapping):
+        # Поддерживаем несколько алиасов для удобства настройки из YAML
+        def _get_weight(component: str, *aliases: str) -> float:
+            keys = (component,) + aliases
+            for key in keys:
+                if key in feature_coverage_importance:
+                    try:
+                        value = float(feature_coverage_importance[key])
+                        return max(0.0, value)
+                    except (TypeError, ValueError):
+                        return 0.0
+            return 0.0
+
+        raw_weights = {
+            "nodes": _get_weight("nodes", "coords", "coordinates", "points"),
+            "edges": _get_weight("edges"),
+            "angles": _get_weight("angles"),
+        }
+        weight_sum = sum(raw_weights.values())
+        if weight_sum > 0:
+            weighted_ratio = 0.0
+            has_components = False
+            for name, weight in raw_weights.items():
+                if weight <= 0:
+                    continue
+                component_ratio = coverage_components.get(name)
+                if component_ratio is None:
+                    continue
+                weighted_ratio += (weight / weight_sum) * component_ratio
+                has_components = True
+            if has_components:
+                coverage_ratio = max(0.0, min(1.0, weighted_ratio))
+
+    else:
+        try:
+            exponent = float(feature_coverage_importance)
+        except (TypeError, ValueError):
+            exponent = 1.0
+        if exponent <= 0:
+            exponent = 1.0
+        coverage_ratio = coverage_ratio ** exponent
+
+    similarity = coverage_ratio * 100.0
     return max(0.0, min(100.0, float(similarity)))
 
 
@@ -252,6 +336,8 @@ def geometry_compare_slow(
     use_angles,
     normalize_position,
     normalize_scale,
+    feature_weights: Optional[Mapping[str, float]] = None,
+    feature_coverage_importance: Union[float, Mapping[str, float], None] = 1.0,
 ) -> float:
     """
     Устойчивое сравнение двух графов по геометрии.
@@ -267,6 +353,8 @@ def geometry_compare_slow(
         normalize_position: Центрировать графы (вычесть среднее)
         normalize_scale: Нормализовать масштаб графов
                         (по максимальному расстоянию)
+        feature_weights: Веса для компонентов сравнения
+        feature_coverage_importance: Степень влияния покрытия признаков
 
     Returns:
         float: Процент схожести графов (0-100)
@@ -309,6 +397,8 @@ def geometry_compare_slow(
         total_edges,
         matched_angles,
         total_angles,
+        feature_weights=feature_weights,
+        feature_coverage_importance=feature_coverage_importance,
     )
 
     return similarity
